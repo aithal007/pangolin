@@ -24,6 +24,25 @@ class FakeConnection implements HeartbeatConnection {
     }
 }
 
+// A connection whose ping()/terminate() can be made to throw, mirroring
+// what `ws`'s real ping() does when called on a socket that's still
+// CONNECTING (verified against ws's own source).
+class FlakyConnection implements HeartbeatConnection {
+    isAlive?: boolean;
+    terminated = false;
+    pingThrows = false;
+    terminateThrows = false;
+
+    ping(): void {
+        if (this.pingThrows) throw new Error("ping failed");
+    }
+
+    terminate(): void {
+        if (this.terminateThrows) throw new Error("terminate failed");
+        this.terminated = true;
+    }
+}
+
 function runTests() {
     // A freshly-connected connection (isAlive not yet set) should be
     // pinged, not terminated - undefined must not be treated as "already
@@ -127,6 +146,66 @@ function runTests() {
         staysAlive.pingCount,
         10,
         "A responsive connection is pinged every cycle"
+    );
+
+    // A connection whose ping() throws (e.g. ws's real ping() throws on a
+    // still-CONNECTING socket) must not propagate - sweepConnection should
+    // swallow it and fall back to terminating the connection, since this
+    // runs from a bare setInterval and this app's global uncaughtException
+    // handler would otherwise crash the whole server over one bad socket.
+    const pingThrows = new FlakyConnection();
+    pingThrows.pingThrows = true;
+    let threw = false;
+    try {
+        sweepConnection(pingThrows);
+    } catch {
+        threw = true;
+    }
+    assertEquals(
+        threw,
+        false,
+        "sweepConnection must not propagate a throw from ping()"
+    );
+    assertEquals(
+        pingThrows.terminated,
+        true,
+        "A connection whose ping() throws should be treated as dead and terminated"
+    );
+
+    // Even if BOTH ping() and terminate() throw, sweepConnection must still
+    // not propagate - there's nothing more it can do, but it must not crash
+    // the sweep (or the process) either.
+    const bothThrow = new FlakyConnection();
+    bothThrow.pingThrows = true;
+    bothThrow.terminateThrows = true;
+    threw = false;
+    try {
+        sweepConnection(bothThrow);
+    } catch {
+        threw = true;
+    }
+    assertEquals(
+        threw,
+        false,
+        "sweepConnection must not propagate even when both ping() and terminate() throw"
+    );
+
+    // The real-world case this protects: one bad connection in a batch must
+    // not stop the other connections in the same sweep from being checked.
+    const throwingFirst = new FlakyConnection();
+    throwingFirst.pingThrows = true;
+    const afterIt = new FakeConnection();
+    const andAfterThat = new FakeConnection();
+    sweepAllConnections([throwingFirst, afterIt, andAfterThat]);
+    assertEquals(
+        afterIt.pingCount,
+        1,
+        "A throwing connection must not stop sweepAllConnections from reaching the next one"
+    );
+    assertEquals(
+        andAfterThat.pingCount,
+        1,
+        "...including the connection after that"
     );
 
     console.log("All heartbeat sweep tests passed!");

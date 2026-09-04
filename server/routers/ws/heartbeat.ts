@@ -24,12 +24,27 @@ export interface HeartbeatConnection {
  * is configured on these sockets today).
  */
 export function sweepConnection(connection: HeartbeatConnection): void {
-    if (connection.isAlive === false) {
-        connection.terminate();
-        return;
+    try {
+        if (connection.isAlive === false) {
+            connection.terminate();
+            return;
+        }
+        connection.isAlive = false;
+        connection.ping();
+    } catch {
+        // ping()/terminate() can throw synchronously in edge-case
+        // readyStates (e.g. `ws`'s ping() throws if the socket is still
+        // CONNECTING). This runs from a bare setInterval with no
+        // surrounding try/catch, and this app's global uncaughtException
+        // handler calls process.exit(1) - so letting this propagate would
+        // crash the entire server for every connected user over one bad
+        // connection. Treat any failure as "this connection is dead."
+        try {
+            connection.terminate();
+        } catch {
+            // best-effort; nothing more to do if even terminate() fails
+        }
     }
-    connection.isAlive = false;
-    connection.ping();
 }
 
 /**

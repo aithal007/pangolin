@@ -65,7 +65,10 @@ let heartbeatTimer: NodeJS.Timeout | null = null;
 const startHeartbeat = (): void => {
     if (heartbeatTimer) return;
     heartbeatTimer = setInterval(() => {
-        sweepAllConnections(Array.from(connectedClients.values()).flat());
+        // Sweep each client's connection array directly rather than
+        // building a flattened copy of every tracked connection - avoids a
+        // full allocation (and its GC cost) on every interval tick.
+        connectedClients.forEach((clients) => sweepAllConnections(clients));
     }, HEARTBEAT_INTERVAL_MS);
 };
 startHeartbeat();
