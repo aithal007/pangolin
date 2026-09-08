@@ -19,7 +19,12 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24'
+          # Pin to the version the app actually ships on (Dockerfile / .nvmrc).
+          # A bare '24' floats to the latest 24.x; Node >= 24.19.0 added
+          # node::ObjectWrap cleanup hooks that crash better-sqlite3 on teardown
+          # ("Assertion failed: (env) != nullptr" in RemoveEnvironmentCleanupHook),
+          # which intermittently kills `npm run dev` in the step below.
+          node-version: '24.18.1'
 
       - name: Copy config file
         run: cp config/config.example.yml config/config.yml
@@ -43,7 +48,9 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Start app in background
-        run: nohup npm run dev &
+        run: |
+          nohup npm run dev > app.log 2>&1 &
+          echo $! > app.pid
 
       - name: Wait for app availability
         run: |
@@ -52,10 +59,17 @@ jobs:
               echo "App is up"
               exit 0
             fi
+            # Fail fast (and show why) if the process already exited.
+            if ! kill -0 "$(cat app.pid)" 2>/dev/null; then
+              echo "App process exited before becoming available. Output:"
+              cat app.log
+              exit 1
+            fi
             echo "Waiting for the app... attempt $i"
             sleep 5
           done
-          echo "App failed to start"
+          echo "App failed to start. Output:"
+          cat app.log
           exit 1
 
   build-sqlite:
