@@ -415,6 +415,21 @@ function runSpecialCharacterTests() {
         "Question mark should still act as a single-character wildcard"
     );
 
+    // A `?` only acts as a wildcard inside a segment that also contains `*`.
+    // On its own it is a literal `?`, matching the original implementation.
+    // This is deliberate: treating a lone `?` as a wildcard would widen which
+    // paths an access rule matches (e.g. `secret?` would match `secrets`).
+    assertEquals(
+        isPathAllowed("file?", "fileX"),
+        false,
+        "A lone ? (no * in the segment) is literal, not a single-char wildcard"
+    );
+    assertEquals(
+        isPathAllowed("file?", "file?"),
+        true,
+        "A lone ? matches a literal ? in the path"
+    );
+
     assertEquals(
         isPathAllowed("api/*", "api/" + "x/".repeat(50)),
         true,

@@ -45,9 +45,14 @@ function decodeAndResolvePath(p: string): string[] {
     return resolved;
 }
 
-// Matches a request path against a rule pattern, segment by segment, where a
-// `*` segment matches zero or more path segments and a segment containing `*`
-// or `?` is matched as a per-segment glob (see `getSegmentRegex`).
+// Matches a request path against a rule pattern, segment by segment. A bare
+// `*` segment matches zero or more path segments. A segment that contains a
+// `*` (but isn't a bare `*`) is matched as a per-segment glob via
+// `getSegmentRegex`, where within that segment `*` matches any run of
+// characters and `?` matches a single character. A segment with no `*` is
+// compared literally, so a lone `?` is a literal `?` — this matches the
+// previous implementation's behavior exactly and is deliberate: making `?`
+// wildcard-match on its own would widen which paths an access rule covers.
 //
 // This is the classic "wildcard matching" problem. The previous
 // implementation expressed it as a doubly-recursive descent: on every `*`
