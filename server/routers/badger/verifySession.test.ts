@@ -268,6 +268,44 @@ function runTests() {
         "Single-dot segments are a no-op and should not affect matching"
     );
 
+    // Multiple consecutive `*` segments: the matcher must still be correct
+    // (these are the patterns that previously triggered exponential-time
+    // backtracking before the switch to dynamic programming).
+    assertEquals(
+        isPathAllowed("*/*/*", "a/b/c"),
+        true,
+        "Three star segments should match a three-segment path"
+    );
+    assertEquals(
+        isPathAllowed("*/*/*/end", "a/b/c/d/e/end"),
+        true,
+        "Leading star segments should absorb extra path segments before a literal tail"
+    );
+    assertEquals(
+        isPathAllowed("*/*/*/*/*/ZZZ", "a/b/c/d/e/f/g"),
+        false,
+        "A many-star pattern must still reject a path missing its literal tail"
+    );
+    assertEquals(
+        isPathAllowed("a/*/*/b", "a/x/b"),
+        true,
+        "Interior star segments may each match zero path segments"
+    );
+
+    // Paths deeper than the old MAX_RECURSION_DEPTH (100) must now match
+    // correctly instead of being silently rejected by the recursion guard.
+    const deepTail = Array.from({ length: 150 }, (_, i) => `s${i}`).join("/");
+    assertEquals(
+        isPathAllowed("api/*", `api/${deepTail}`),
+        true,
+        "A legitimately deep path (>100 segments) under a wildcard should match"
+    );
+    assertEquals(
+        isPathAllowed("api/*/x", `api/${deepTail}/x`),
+        true,
+        "Deep paths should also match patterns with a literal tail after the star"
+    );
+
     console.log("All path matching tests passed!");
 }
 
