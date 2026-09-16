@@ -3,19 +3,21 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import { insertRowsAtomically } from "./insertRowsAtomically";
 
 // Guards the atomicity of the buffered audit-log flush in logRequestAudit.ts.
 //
-// better-sqlite3's transaction() is synchronous: it runs BEGIN, invokes the
-// callback, then COMMIT. Handing it an `async` callback means the callback
-// returns a promise at its first `await`, so COMMIT fires before any insert has
-// run - the inserts then execute in autocommit mode, one implicit transaction
-// each. A failure partway through therefore leaves earlier rows committed,
-// which matters because flushAuditLogs() re-queues the whole slice on error and
-// would duplicate them on the retry.
+// These tests drive the real `insertRowsAtomically()` that flushAuditLogs()
+// calls in production, against a real SQLite database - not a re-implementation
+// of it. If the helper were reverted to handing better-sqlite3 an `async`
+// transaction callback, the first test below fails.
 //
-// These tests pin the two behaviors against a real SQLite database so the
-// distinction can't silently regress.
+// Background: better-sqlite3's transaction() is synchronous - it runs BEGIN,
+// invokes the callback, then COMMIT. An `async` callback returns a promise at
+// its first `await`, so COMMIT fires on an empty transaction before any insert
+// has run, and the inserts then execute in autocommit mode. A failure partway
+// through therefore leaves earlier rows committed, which matters because
+// flushAuditLogs() re-queues the whole slice on error and would duplicate them.
 
 const rows = sqliteTable("rows", {
     id: integer("id").primaryKey({ autoIncrement: true }),
@@ -48,25 +50,23 @@ function countRows(sqlite: Database.Database): number {
 async function runTests() {
     console.log("Running audit log transaction atomicity tests...");
 
-    // A synchronous callback keeps the transaction open across every batch, so
-    // a failure partway through rolls the whole flush back. This is the shape
-    // insertAuditLogsAtomically() uses on SQLite.
+    // A mid-flush failure must roll back every batch. We force the failure from
+    // inside the insert path by making one row violate NOT NULL, so the error
+    // originates in the same place a real database error would.
     {
         const { db, sqlite } = freshDb();
-        const toWrite = makeRows(60); // 25 / 25 / 10
+        const toWrite: { val: string | null }[] = makeRows(60); // 25 / 25 / 10
+        toWrite[55].val = null; // lands in the third batch
         let threw = false;
 
         try {
-            db.transaction((tx) => {
-                for (let i = 0; i < toWrite.length; i += BATCH_DB_SIZE) {
-                    if (i >= 50) {
-                        throw new Error("simulated failure on third batch");
-                    }
-                    tx.insert(rows)
-                        .values(toWrite.slice(i, i + BATCH_DB_SIZE))
-                        .run();
-                }
-            });
+            await insertRowsAtomically(
+                db,
+                "sqlite",
+                rows,
+                toWrite,
+                BATCH_DB_SIZE
+            );
         } catch {
             threw = true;
         }
@@ -75,41 +75,47 @@ async function runTests() {
         assertEquals(
             countRows(sqlite),
             0,
-            "A sync transaction callback must roll back every batch on failure"
+            "A failed flush must roll back every batch, leaving no rows behind"
         );
         sqlite.close();
     }
 
-    // The happy path must still commit everything.
+    // The happy path must still commit everything, across multiple batches.
     {
         const { db, sqlite } = freshDb();
-        const toWrite = makeRows(60);
-
-        db.transaction((tx) => {
-            for (let i = 0; i < toWrite.length; i += BATCH_DB_SIZE) {
-                tx.insert(rows)
-                    .values(toWrite.slice(i, i + BATCH_DB_SIZE))
-                    .run();
-            }
-        });
-
+        await insertRowsAtomically(
+            db,
+            "sqlite",
+            rows,
+            makeRows(60),
+            BATCH_DB_SIZE
+        );
         assertEquals(
             countRows(sqlite),
             60,
-            "A sync transaction callback must commit every batch on success"
+            "A successful flush must commit every batch"
         );
         sqlite.close();
     }
 
-    // Documents why the async form cannot be used here: COMMIT has already run
-    // by the time the first insert executes, so nothing is rolled back.
+    // An empty flush should be a no-op rather than opening a transaction.
+    {
+        const { db, sqlite } = freshDb();
+        await insertRowsAtomically(db, "sqlite", rows, [], BATCH_DB_SIZE);
+        assertEquals(countRows(sqlite), 0, "An empty flush writes nothing");
+        sqlite.close();
+    }
+
+    // Documents the underlying driver behaviour this fix exists for: handing
+    // better-sqlite3 an async callback commits before the first insert runs, so
+    // nothing can be rolled back. This is what insertRowsAtomically() avoids.
     {
         const { db, sqlite } = freshDb();
         const toWrite = makeRows(60);
-
         let inTransactionAfterFirstAwait: boolean | null = null;
+
         try {
-            await db.transaction(async (tx) => {
+            await (db as any).transaction(async (tx: any) => {
                 for (let i = 0; i < toWrite.length; i += BATCH_DB_SIZE) {
                     if (i >= 50) {
                         throw new Error("simulated failure on third batch");
@@ -134,7 +140,7 @@ async function runTests() {
         assertEquals(
             countRows(sqlite),
             50,
-            "An async callback leaves earlier batches committed - the bug this guards against"
+            "An async callback leaves earlier batches committed - the regression this guards against"
         );
         sqlite.close();
     }
