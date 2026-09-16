@@ -72,15 +72,19 @@ export default function SiteInfoCard({}: SiteInfoCardProps) {
                             <InfoSectionTitle>
                                 {t("connectionType")}
                             </InfoSectionTitle>
-                            <InfoSectionContent>Newt</InfoSectionContent>
+                            <InfoSectionContent>
+                                {t("pangolinSite")}
+                            </InfoSectionContent>
                         </InfoSection>
                         <InfoSection>
-                            <InfoSectionTitle>
-                                {t("newtVersion")}
-                            </InfoSectionTitle>
+                            <InfoSectionTitle>{t("agent")}</InfoSectionTitle>
                             <InfoSectionContent>
-                                {site.newtVersion
-                                    ? `v${site.newtVersion}`
+                                {site.agent == "newt" ? "Newt" : null}
+                                {site.agent == "cli"
+                                    ? "Pangolin CLI"
+                                    : null}{" "}
+                                {site.agentVersion
+                                    ? `v${site.agentVersion}`
                                     : "-"}
                             </InfoSectionContent>
                         </InfoSection>

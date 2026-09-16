@@ -37,6 +37,8 @@ export const handleNewtRegisterMessage: MessageHandler = async (context) => {
         publicKey,
         pingResults,
         newtVersion,
+        agent,
+        agentVersion,
         backwardsCompatible,
         chainId
     } = message.data;
@@ -169,22 +171,21 @@ export const handleNewtRegisterMessage: MessageHandler = async (context) => {
         logger.error(`Failed to add peer to exit node: ${error}`);
     }
 
-    if (newtVersion && newtVersion !== newt.version) {
+    if (
+        newtVersion !== newt.version ||
+        agent !== newt.agent ||
+        agentVersion !== newt.agentVersion
+    ) {
         // update the newt version in the database
         await db
             .update(newts)
             .set({
-                version: newtVersion as string
-            })
-            .where(eq(newts.newtId, newt.newtId));
-    }
-
-    if (newtVersion && newtVersion !== newt.version) {
-        // update the newt version in the database
-        await db
-            .update(newts)
-            .set({
-                version: newtVersion as string
+                version: newtVersion as string,
+                agent: agent,
+                agentVersion:
+                    !agentVersion && agent == "newt"
+                        ? newtVersion
+                        : agentVersion
             })
             .where(eq(newts.newtId, newt.newtId));
     }

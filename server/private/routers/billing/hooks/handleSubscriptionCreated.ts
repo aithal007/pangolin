@@ -222,15 +222,16 @@ export async function handleSubscriptionCreated(
 
                 let numUsers: number;
                 let numSites: number;
+                let tier = "enterprise";
 
-                if (subscriptionPriceId === priceSet[LicenseId.SMALL_LICENSE]) {
+                if (subscriptionPriceId === priceSet[LicenseId.TIER1]) {
                     numUsers = 25;
                     numSites = 25;
-                } else if (
-                    subscriptionPriceId === priceSet[LicenseId.BIG_LICENSE]
-                ) {
+                    tier = "tier1";
+                } else if (subscriptionPriceId === priceSet[LicenseId.TIER2]) {
                     numUsers = 50;
                     numSites = 100;
+                    tier = "tier2";
                 } else {
                     logger.error(
                         `Unknown price ID ${subscriptionPriceId} for subscription ${subscription.id}`
@@ -256,7 +257,8 @@ export async function handleSubscriptionCreated(
                             licenseId: parseInt(licenseId),
                             paidFor: true,
                             users: numUsers,
-                            sites: numSites
+                            sites: numSites,
+                            tier: tier
                         })
                     }
                 );

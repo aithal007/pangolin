@@ -40,8 +40,8 @@ import { InfoIcon } from "lucide-react";
 import { useUserContext } from "@app/hooks/useUserContext";
 
 const TIER_TO_LICENSE_ID = {
-    starter: "small_license",
-    scale: "big_license"
+    starter: "tier1",
+    scale: "tier2"
 } as const;
 
 type FormProps = {

@@ -6,6 +6,7 @@ import {
     Bot,
     Boxes,
     Building2,
+    Building2Icon,
     Cable,
     ChartLine,
     Coins,
@@ -140,7 +141,7 @@ export const orgNavSections = (
                 href: "/{orgId}/settings/domains",
                 icon: <Globe className="size-4 flex-none" />
             },
-            ...(build === "saas"
+            ...(env?.flags.usePangolinDns
                 ? [
                       {
                           title: "sidebarRemoteExitNodes",
@@ -377,6 +378,11 @@ export const adminNavSections = (env?: Env): SidebarNavSection[] => [
                 icon: <Users className="size-4 flex-none" />
             },
             {
+                title: "sidebarOrgs",
+                href: "/admin/organizations",
+                icon: <Building2Icon className="size-4 flex-none" />
+            },
+            {
                 title: "sidebarApiKeys",
                 href: "/admin/api-keys",
                 icon: <KeyRound className="size-4 flex-none" />
@@ -392,7 +398,7 @@ export const adminNavSections = (env?: Env): SidebarNavSection[] => [
                       }
                   ]
                 : []),
-            ...(build == "enterprise"
+            ...(build === "enterprise"
                 ? [
                       {
                           title: "sidebarLicense",
@@ -461,7 +467,7 @@ export const commandBarNavSections = (
                 title: "commandMachineClients",
                 icon: <Server className="size-4 flex-none" />
             },
-            ...(build === "saas"
+            ...(env?.flags.usePangolinDns
                 ? [
                       {
                           title: "commandRemoteExitNodes",

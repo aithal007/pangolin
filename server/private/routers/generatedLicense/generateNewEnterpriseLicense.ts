@@ -64,14 +64,11 @@ export async function generateNewEnterpriseLicense(
 
         const licenseData = req.body;
 
-        if (
-            licenseData.tier != "big_license" &&
-            licenseData.tier != "small_license"
-        ) {
+        if (licenseData.tier != "tier2" && licenseData.tier != "tier1") {
             return next(
                 createHttpError(
                     HttpCode.BAD_REQUEST,
-                    "Invalid tier specified. Must be either 'big_license' or 'small_license'."
+                    "Invalid tier specified. Must be either 'tier2' or 'tier1'."
                 )
             );
         }
@@ -118,9 +115,7 @@ export async function generateNewEnterpriseLicense(
         }
 
         const tier =
-            licenseData.tier === "big_license"
-                ? LicenseId.BIG_LICENSE
-                : LicenseId.SMALL_LICENSE;
+            licenseData.tier === "tier2" ? LicenseId.TIER2 : LicenseId.TIER1;
         const tierPrice = getLicensePriceSet()[tier];
 
         const session = await stripe!.checkout.sessions.create({
